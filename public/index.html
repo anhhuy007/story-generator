@@ -328,6 +328,16 @@
 					<input type="number" id="sceneCount" min="1" max="10" value="3" />
 				</div>
 
+				<div class="form-group">
+					<label for="storyType">Select story type:</label>
+					<select id="storyType">
+						<option value="Analysis - Detailed examination of the topic">Analysis - Detailed examination of the topic</option>
+						<option value="Storytelling - Narrative approach to the topic">Storytelling - Narrative approach to the topic</option>
+						<option value="Poetry Illustration - Artistic interpretation">Poetry Illustration - Artistic interpretation</option>
+					</select>
+				</div>
+				
+
 				<button id="generateBtn">Generate Story</button>
 			</div>
 
@@ -403,7 +413,8 @@
 				generateBtn.addEventListener('click', async () => {
 					const topic = document.getElementById('storyPrompt').value.trim();
 					const sceneCount = parseInt(document.getElementById('sceneCount').value);
-			
+					const type=document.getElementById('storyType').value;	
+
 					if (!topic || isNaN(sceneCount) || sceneCount < 1 || sceneCount > 10) {
 						errorMessage.textContent = 'Please provide a valid story topic and scene count (1-10).';
 						errorMessage.style.display = 'block';
@@ -417,7 +428,7 @@
 						const contentRes = await fetch('/api/generate/content', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ topic, sceneCount })
+							body: JSON.stringify({ topic, type, sceneCount })
 						});
 			
 						if (!contentRes.ok) {

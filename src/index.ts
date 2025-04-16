@@ -55,6 +55,7 @@ interface LLMResponse {
 
 interface GenerateContentRequest {
     topic: string;
+	type:string;
     sceneCount: number;
 }
 async function generateImage(ai: Ai, prompt: string): Promise<string> {
@@ -201,12 +202,14 @@ export default {
 
 		// === Endpoint 1: Generate content ===
 		if (request.method === 'POST' && pathname === '/api/generate/content') {
-			const { topic, sceneCount } = await request.json() as GenerateContentRequest;
+			const { topic, type, sceneCount } = await request.json() as GenerateContentRequest;
 
+			console.log(`[CHECK] Request body: ${JSON.stringify({ topic, type, sceneCount })}`);
 			const fullPrompt = `
 				Topic: ${topic}
+				
 
-				Generate a story outline with ${sceneCount} scenes.
+				Generate a story outline with ${sceneCount} with ${type} mode.
 				The story should be consistent and coherent, with a clear beginning, middle, and end.
 
 				Response format:
