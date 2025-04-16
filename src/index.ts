@@ -1,10 +1,29 @@
+import 'dotenv/config';
+
 export interface Env {
 	AI: Ai;
 }
 
 interface Scene {
-	imageDescription: string; // English
-	narration: string; // Vietnamese
+	id: number;
+	title: string;
+	description: string;
+	image: string;
+	narration: string;
+}
+
+interface Character {
+	id: number;
+	name: string;
+	description: string;
+}
+
+interface Story {
+	prompt: string;
+	scenesCount: number;
+	scenes: Scene[];
+	characters: Character[];
+	theme: string;
 }
 
 interface StoryRequest {
@@ -12,150 +31,223 @@ interface StoryRequest {
 	sceneCount: number;
 }
 
-interface AiTextGenerationOutput {
-	response?: string;
-	usage?: {
-		prompt_tokens: number;
-		completion_tokens: number;
-		total_tokens: number;
-	};
-	tool_calls?: { name: string; arguments: unknown }[];
+interface StoryReponse {
+	story: Story;
+	images: string[]; // Array of base64 encoded images for each scene
 }
 
-interface StoryOutline {
-	characters: Record<string, string>;
-	scenes: { summary: string }[];
+interface AIModel {
+	API_KEY: string;
+	URL: string;
+	requestBody: string;
+}
+
+interface LLMResponse {
+	candidates: {
+		content: {
+			parts: {
+				text: string;
+			}[];
+		};
+	}[];
+}
+
+
+interface GenerateContentRequest {
+    topic: string;
+    sceneCount: number;
+}
+async function generateImage(ai: Ai, prompt: string): Promise<string> {
+	`
+    Generate an image based on the prompt using the Cloudflare AI Worker
+
+    Input: prompt (string): The prompt to generate the image from
+    Output: image (string): The generated image in base64 format
+    `;
+
+	// Logging
+	console.log(`[PROCESS] Generating image for prompt: ${prompt}`);
+
+	const outlinedPrompt = `
+        Generate an image with Pixar 3D animation style based on the following prompt: ${prompt}
+    `;
+
+	try {
+		const result = await ai.run('@cf/black-forest-labs/flux-1-schnell', {
+			prompt: outlinedPrompt,
+		});
+
+		return `data:image/png;base64,${await result.image}`;
+	} catch (error) {
+		console.error(`[ERROR] Failed to generate image: ${error}`);
+		throw new Error(`Failed to generate image: ${error}`);
+	}
+}
+
+async function generateLLMResponse(model: AIModel, prompt: string): Promise<string> {
+	if (!model.API_KEY || !model.URL) {
+		throw new Error('API_KEY or URL is not defined');
+	}
+
+	const requestBody = JSON.stringify({
+		contents: [
+		  {
+			parts: [
+			  {
+				text: prompt, // đúng format như API yêu cầu
+			  },
+			],
+		  },
+		],
+	  });
+	  
+	  const response = await fetch(model.URL.replace('${apiKey}', model.API_KEY), {
+		method: 'POST',
+		headers: {
+		  'Content-Type': 'application/json',
+		},
+		body: requestBody,
+	  });
+	  
+	if (!response.ok) {
+		throw new Error(`Failed to generate LLM response: ${response.statusText}`);
+	}
+
+	return response.text();
+}
+
+async function generateStoryOutline(model: AIModel, prompt: string, scenesCount: number): Promise<Story> {
+	`
+        Generate a story outline based on the prompt using the LLM.
+        
+        Input: 
+            API_KEY (string): The API key for the LLM
+            URL (string): The URL for the LLM endpoint
+            body (string): The body of the request to the LLM
+            prompt (string): The prompt to generate the response from
+        
+        Output: 
+            response (string): The generated response from the LLM
+        `;
+
+	const outlinedPrompt = `
+        Generate a story outline with ${scenesCount} scenes based on the following prompt: ${prompt}.
+        The story should be consistent and coherent, with a clear beginning, middle, and end.
+
+        The response should be in JSON format with the following structure:
+        {
+            "prompt": "<prompt>",
+            "scenesCount": <number>,
+            "scenes": [
+                {
+                    "id": <number>,
+                    "title": "<title>",
+                    "description": "<description>",
+                    "image": "<image>",
+                    "narration": "<narration>"
+                }
+            ],
+            "characters": [
+                {
+                    "id": <number>,
+                    "name": "<name>",
+                    "description": "<description>"
+                }
+            ],
+            "theme": "<theme>"
+        }
+
+        The scene's image should be less than 200 words, containing a description of the scene and the characters in it.
+		The narration for each scene should be in Vietnamese, with a natural and emotionally resonant flow. It should be around 80 words, vividly describing the scene. Use a reverent tone appropriate for storytelling.
+        The characters should be described clearly, with their gender and appearance (e.g., hair color, eye color, clothing). 
+    `;
+	const modelResponse = await generateLLMResponse(model, outlinedPrompt);
+
+	// Parse the response to JSON
+	let parsedResponse: LLMResponse;
+	try {
+		parsedResponse = JSON.parse(modelResponse) as LLMResponse;
+	} catch (error) {
+		console.error(`[ERROR] Failed to parse LLM response: ${error}`);
+		throw new Error(`Failed to parse LLM response: ${error}`);
+	}
+
+	// Clean up the Markdown code block wrapper
+	let storyOutline = parsedResponse.candidates[0].content.parts[0].text.trim();
+	if (storyOutline.startsWith('```json')) {
+		storyOutline = storyOutline
+			.replace(/^```json/, '')
+			.replace(/```$/, '')
+			.trim();
+	}
+
+	console.log(`[CHECK] Cleaned Story outline: ${storyOutline}`);
+
+	return JSON.parse(storyOutline) as Story;
 }
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
-		if (request.method === 'POST' && new URL(request.url).pathname === '/generate-story') {
-			try {
-				const { prompt, sceneCount } = (await request.json()) as StoryRequest;
+		const GEMINI_API_KEY = 'AIzaSyDFTpaQcUUsw_0Tv-IzZWTD-5UVT5bxV0A';
 
-				if (!prompt || !sceneCount || sceneCount < 1) {
-					return new Response(JSON.stringify({ error: 'Missing prompt or invalid scene count' }), { status: 400 });
+		const geminiModel: AIModel = {
+			API_KEY: GEMINI_API_KEY,
+			URL: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}',
+			requestBody: '', // Không dùng field này nữa
+		};
+
+		const url = new URL(request.url);
+		const pathname = url.pathname;
+
+		// === Endpoint 1: Generate content ===
+		if (request.method === 'POST' && pathname === '/api/generate/content') {
+			const { topic, sceneCount } = await request.json() as GenerateContentRequest;
+
+			const fullPrompt = `
+				Topic: ${topic}
+
+				Generate a story outline with ${sceneCount} scenes.
+				The story should be consistent and coherent, with a clear beginning, middle, and end.
+
+				Response format:
+				{
+					"prompt": "...",
+					"scenesCount": ...,
+					"scenes": [...],
+					"characters": [...],
+					"theme": "..."
 				}
 
-				// Step 1: Generate the general story outline
-				const storyOutline = await generateStoryOutline(env.AI, prompt, sceneCount);
+				Scene image description: < 200 words.
+				Narration (in Vietnamese): ~80 words, emotional, story-like.
+			`;
 
-				// Step 2: Generate detailed scenes based on the outline
-				const scenes: Scene[] = await Promise.all(
-					storyOutline.scenes.map((scene, index) => generateSceneDetails(env.AI, prompt, index + 1, scene.summary, storyOutline.characters))
-				);
+			const story = await generateStoryOutline(geminiModel, fullPrompt, sceneCount);
 
-				// Generate images for each scene
-				const imagePromises = scenes.map((scene) => env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt: scene.imageDescription }));
-				const images = await Promise.all(imagePromises);
-
-				// Prepare JSON output without images
-				const storyOutput = {
-					prompt,
-					scenes: scenes.map((scene) => ({
-						narration: scene.narration, // Vietnamese
-						imageDescription: scene.imageDescription, // English
-					})),
-					characterDescriptions: storyOutline.characters,
-					generatedAt: new Date().toISOString(),
-				};
-
-				// Prepare response with metadata and images
-				const responseData = {
-					metadata: storyOutput,
-					images: images.map((img) => `data:image/png;base64,${img.image}`),
-				};
-
-				return new Response(JSON.stringify(responseData, null, 2), {
-					headers: {
-						'Content-Type': 'application/json',
-						'Content-Disposition': 'attachment; filename="story_output.json"',
-					},
-				});
-			} catch (error: any) {
-				return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-			}
+			return new Response(JSON.stringify({ story }), {
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
-		return new Response('Welcome to Story Maker!', { status: 200 });
-	},
+		// === Endpoint 2: Generate images ===
+		else if (request.method === 'POST' && pathname === '/api/generate/images') {
+			const { scenes } = await request.json() as { scenes: Scene[] };
+
+			const images: string[] = [];
+			for (const scene of scenes) {
+				const img = await generateImage(env.AI, scene.image);
+				images.push(img);
+			}
+
+			return new Response(JSON.stringify({ images }), {
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}
+
+		// === Existing endpoint fallback ===
+		return new Response('OK', {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
 };
-
-// Step 1: Generate the general story outline
-async function generateStoryOutline(ai: Ai, prompt: string, sceneCount: number): Promise<StoryOutline> {
-	const outlinePrompt = `Based on the story description "${prompt}", create a cohesive story outline in English with ${sceneCount} scenes. Include:
-	1. Key characters with detailed physical descriptions (e.g., hair color, clothing).
-	2. A brief summary (1-2 sentences) for each scene, ensuring logical progression and consistency.
-	Format the response as:
-	Characters:
-	- [Name]: [description]
-	Scenes:
-	- Scene 1: [summary]
-	- Scene 2: [summary]
-	...`;
-
-	const response = (await ai.run('@cf/meta/llama-2-7b-chat-int8', { prompt: outlinePrompt })) as AiTextGenerationOutput;
-	const text = response.response || 'Characters:\n- Hero: A generic warrior.\nScenes:\n- Scene 1: A battle begins.';
-
-	const lines = text.split('\n').filter((line) => line.trim());
-	const characters: Record<string, string> = {};
-	const scenes: { summary: string }[] = [];
-	let parsingScenes = false;
-
-	lines.forEach((line) => {
-		if (line.startsWith('Characters:')) {
-			parsingScenes = false;
-		} else if (line.startsWith('Scenes:')) {
-			parsingScenes = true;
-		} else if (!parsingScenes) {
-			const match = line.match(/^-\s*([^:]+):\s*(.+)$/);
-			if (match) {
-				const [, name, desc] = match;
-				characters[name.trim()] = desc.trim();
-			}
-		} else {
-			const sceneMatch = line.match(/^-\s*Scene\s*(\d+):\s*(.+)$/);
-			if (sceneMatch) {
-				scenes.push({ summary: sceneMatch[2].trim() });
-			}
-		}
-	});
-
-	// Fallbacks
-	if (Object.keys(characters).length === 0) {
-		characters['Unknown Leader'] = 'A generic warrior from the story.';
-	}
-	if (scenes.length < sceneCount) {
-		for (let i = scenes.length; i < sceneCount; i++) {
-			scenes.push({ summary: `A generic continuation of the story in scene ${i + 1}.` });
-		}
-	}
-
-	return { characters, scenes };
-}
-
-// Step 2: Generate detailed scene content
-async function generateSceneDetails(
-	ai: Ai,
-	prompt: string,
-	sceneNumber: number,
-	summary: string,
-	characters: Record<string, string>
-): Promise<Scene> {
-	const narrationPrompt = `Dựa trên mô tả câu chuyện "${prompt}" và tóm tắt cảnh "${summary}", tạo một đoạn kể chuyện ngắn (50-100 từ) bằng tiếng Việt cho cảnh ${sceneNumber}. Đảm bảo phù hợp với mạch truyện tổng thể.`;
-	const imagePrompt = `Based on the story description "${prompt}" and scene summary "${summary}", create a detailed image description in English for scene ${sceneNumber}. Include consistent characters: ${Object.entries(
-		characters
-	)
-		.map(([name, desc]) => `${name} (${desc})`)
-		.join(', ')}. Ensure it fits the overall narrative.`;
-
-	const [narrationResponse, imageResponse] = await Promise.all([
-		ai.run('@cf/meta/llama-2-7b-chat-int8', { prompt: narrationPrompt }) as Promise<AiTextGenerationOutput>,
-		ai.run('@cf/meta/llama-2-7b-chat-int8', { prompt: imagePrompt }) as Promise<AiTextGenerationOutput>,
-	]);
-
-	const narration = narrationResponse.response || `Cảnh ${sceneNumber} của câu chuyện.`;
-	const imageDescription = imageResponse.response || `A generic scene with ${Object.values(characters).join(' and ')}.`;
-
-	return { narration, imageDescription };
-}
