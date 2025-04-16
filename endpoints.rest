@@ -1,0 +1,26 @@
+POST http://127.0.0.1:8787/api/generate/content
+Content-Type: application/json
+
+{
+  "topic": "Write a story about a dragon who loves to dance.",
+  "sceneCount": 5
+}
+
+###
+
+POST http://127.0.0.1:8787/api/generate/image
+Content-Type: application/json
+
+{
+  "prompt": "A dragon dancing in a forest, surrounded by colorful flowers and butterflies."
+}
+
+###
+
+POST http://localhost:3000/api/generation/image
+Content-Type: application/json
+
+{
+  "prompt": "A dragon dancing in a forest, surrounded by colorful flowers and butterflies.",
+  "sceneCount": 3
+}

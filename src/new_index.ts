@@ -52,11 +52,6 @@ interface LLMResponse {
 	}[];
 }
 
-interface GenerateContentRequest {
-	topic: string;
-	sceneCount: number;
-}
-
 async function generateImage(ai: Ai, prompt: string): Promise<string> {
 	`
     Generate an image based on the prompt using the Cloudflare AI Worker
@@ -85,28 +80,40 @@ async function generateImage(ai: Ai, prompt: string): Promise<string> {
 }
 
 async function generateLLMResponse(model: AIModel, prompt: string): Promise<string> {
-	if (!model.API_KEY || !model.URL) {
-		throw new Error('API_KEY or URL is not defined');
+	`
+        Generate a response from the LLM based on the prompt using the Cloudflare AI Worker
+        
+        Input: 
+            API_KEY (string): The API key for the LLM
+            URL (string): The URL for the LLM endpoint
+            body (string): The body of the request to the LLM
+            prompt (string): The prompt to generate the response from
+        
+        Output: 
+            response (string): The generated response from the LLM
+        `;
+
+	if (!model.API_KEY) {
+		throw new Error('API_KEY is not defined');
 	}
 
-	const requestBody = JSON.stringify({
-		contents: [
-			{
-				parts: [
-					{
-						text: prompt, // đúng format như API yêu cầu
-					},
-				],
-			},
-		],
-	});
+	if (!model.URL) {
+		throw new Error('URL is not defined');
+	}
 
-	const response = await fetch(model.URL.replace('${apiKey}', model.API_KEY), {
+	// Replace the placeholder in the URL with the actual API key
+	model.URL = model.URL.replace('${apiKey}', model.API_KEY);
+	model.requestBody = model.requestBody.replace('"mytext"', JSON.stringify(prompt));
+
+	// console.log(`[CHECK] Sending request to LLM: ${model.URL}`);
+	// console.log(`[CHECK] Request body: ${model.requestBody}`);
+
+	const response = await fetch(model.URL, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
 		},
-		body: requestBody,
+		body: model.requestBody,
 	});
 
 	if (!response.ok) {
@@ -193,13 +200,19 @@ export default {
 		const geminiModel: AIModel = {
 			API_KEY: GEMINI_API_KEY,
 			URL: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}',
-			requestBody: '', // Không dùng field này nữa
+			requestBody: JSON.stringify({
+				contents: [
+					{
+						parts: [
+							{
+								text: `mytext`,
+							},
+						],
+					},
+				],
+			}),
 		};
 
-		const url = new URL(request.url);
-		const pathname = url.pathname;
-
-		// handle CORS preflight requests
 		if (request.method === 'OPTIONS') {
 			return new Response(null, {
 				status: 204,
@@ -212,77 +225,80 @@ export default {
 			});
 		}
 
-		// === Endpoint 1: Generate content ===
-		if (request.method === 'POST' && pathname === '/api/generate/content') {
-			const { topic, sceneCount } = (await request.json()) as GenerateContentRequest;
+		if (request.method == 'POST' && new URL(request.url).pathname == '/api/generate-story') {
+			const { prompt, sceneCount } = (await request.json()) as StoryRequest;
 
-			const fullPrompt = `
-				Topic: ${topic}
+			// Step 1: Generate the story outline using the LLM
+			const storyOutline = await generateStoryOutline(geminiModel, prompt, sceneCount);
+			console.log(`[PROCESS] Story outline generated: ${storyOutline.prompt}`);
 
-				Generate a story outline with ${sceneCount} scenes.
-				The story should be consistent and coherent, with a clear beginning, middle, and end.
+			console.log(`[CHECK] Story scenes count: ${storyOutline.scenesCount}`);
 
-				Response format:
-				{
-					"prompt": "...",
-					"scenesCount": ...,
-					"scenes": [...],
-					"characters": [...],
-					"theme": "..."
-				}
-
-				Scene image description: < 200 words.
-				Narration (in Vietnamese): ~80 words, emotional, story-like.
-			`;
-
-			const story = await generateStoryOutline(geminiModel, fullPrompt, sceneCount);
-
-			return new Response(JSON.stringify({ story }), {
-				headers: { 
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*', 
-				},
-			});
-		}
-
-		// === Endpoint 2: Generate images ===
-		else if (request.method === 'POST' && pathname === '/api/generate/images') {
-			const { scenes } = (await request.json()) as { scenes: Scene[] };
-
-			const images: string[] = [];
-			for (const scene of scenes) {
-				// Generate image for each scene
-				const img = await generateImage(env.AI, scene.image);
-				images.push(img);
+			// Step 2: Generate images for each scene
+			const based64Images: string[] = [];
+			for (let i = 0; i < storyOutline.scenesCount; i++) {
+				const scene = storyOutline.scenes[i];
+				const image = await generateImage(env.AI, scene.image);
+				based64Images.push(image);
 			}
+			console.log(`[PROCESS] All images generated successfully.`);
 
-			return new Response(JSON.stringify({ images }), {
-				headers: { 
-					'Content-Type': 'application/json', 
-					'Access-Control-Allow-Origin': '*',
+			// Step 3: Create the response object
+			const storyResponse: StoryReponse = {
+				story: storyOutline,
+				images: based64Images,
+			};
+
+			return new Response(JSON.stringify(storyResponse), {
+				headers: {
+					'Content-Type': 'application/json',
+					'Content-Disposition': 'attachment; filename="story-output.json"',
 				},
 			});
-		}
+		} else if (request.method == 'POST' && new URL(request.url).pathname == '/api/generate-story-outline') {
+			const { prompt, sceneCount } = (await request.json()) as StoryRequest;
 
-		// === Endpoint 3: Generate image ===
-		else if (request.method === 'POST' && pathname === '/api/generate/image') {
+			// Step 1: Generate the story outline using the LLM
+			const storyOutline = await generateStoryOutline(geminiModel, prompt, sceneCount);
+			console.log(`[PROCESS] Story outline generated: ${storyOutline.prompt}`);
+
+			// Step 2: Create the response object
+			const storyResponse: StoryReponse = {
+				story: storyOutline,
+				images: [], // No images generated for the outline request
+			};
+
+			return new Response(JSON.stringify(storyResponse), {
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+					'Content-Disposition': 'attachment; filename="story-outline-output.json"',
+				},
+			});
+		} else if (request.method == 'POST' && new URL(request.url).pathname == '/api/generate-image') {
 			const { prompt } = (await request.json()) as { prompt: string };
 
+			// Step 1: Generate the image using the AI model
 			const image = await generateImage(env.AI, prompt);
 
-			return new Response(JSON.stringify({ image }), {
-				headers: { 
-					'Content-Type': 'application/json', 
-					'Access-Control-Allow-Origin': '*',
+			// Step 2: Create the response object
+			const imageResponse = {
+				image: image,
+			};
+
+			return new Response(JSON.stringify(imageResponse), {
+				headers: {
+					'Content-Type': 'application/json',
 					'Content-Disposition': 'attachment; filename="image-output.json"',
 				},
 			});
 		}
 
-		// === Existing endpoint fallback ===
 		return new Response('OK', {
 			status: 200,
-			headers: { 'Content-Type': 'application/json' },
+			headers: {
+				'Content-Type': 'application/json',
+			},
 		});
 	},
 };

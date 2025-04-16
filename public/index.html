@@ -3,244 +3,552 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Story Maker</title>
+		<title>AI Story Generator</title>
 		<style>
-			body {
-				font-family: Arial, sans-serif;
-				margin: 40px;
-				background-color: #f5f5f5;
-				color: #333;
+			:root {
+				--primary: #4361ee;
+				--secondary: #3a0ca3;
+				--light: #f8f9fa;
+				--dark: #212529;
+				--success: #4cc9f0;
+				--error: #ef476f;
 			}
+
+			body {
+				font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+				line-height: 1.6;
+				color: var(--dark);
+				margin: 0;
+				padding: 0;
+				background-color: #f5f7fa;
+			}
+
 			.container {
+				width: 100%;
 				max-width: 1200px;
 				margin: 0 auto;
 				padding: 20px;
-				background-color: white;
-				border-radius: 8px;
-				box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 			}
+
+			header {
+				text-align: center;
+				padding: 20px 0;
+				margin-bottom: 30px;
+				background: linear-gradient(135deg, var(--primary), var(--secondary));
+				color: white;
+				border-radius: 10px;
+				box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+			}
+
 			h1 {
-				color: #2c3e50;
-				text-align: center;
+				margin: 0;
+				font-size: 2.5rem;
 			}
-			.input-group {
-				margin: 20px 0;
-				text-align: center;
+
+			.tagline {
+				font-size: 1.2rem;
+				opacity: 0.9;
 			}
-			#prompt {
-				padding: 10px;
-				width: 70%;
+
+			.generator-form {
+				background-color: white;
+				padding: 30px;
+				border-radius: 10px;
+				box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+				margin-bottom: 30px;
+			}
+
+			.form-group {
+				margin-bottom: 20px;
+			}
+
+			label {
+				display: block;
+				margin-bottom: 8px;
+				font-weight: 600;
+			}
+
+			textarea,
+			input {
+				width: 100%;
+				padding: 12px;
 				border: 1px solid #ddd;
-				border-radius: 4px;
+				border-radius: 5px;
 				font-size: 16px;
-				vertical-align: middle;
 			}
-			#sceneCount {
-				padding: 10px;
-				width: 10%;
-				border: 1px solid #ddd;
-				border-radius: 4px;
-				font-size: 16px;
-				margin-left: 10px;
-				vertical-align: middle;
+
+			textarea {
+				min-height: 120px;
+				resize: vertical;
 			}
-			#generate {
-				padding: 10px 20px;
-				background-color: #3498db;
+
+			button {
+				background-color: var(--primary);
 				color: white;
 				border: none;
-				border-radius: 4px;
+				padding: 12px 24px;
+				font-size: 18px;
+				border-radius: 5px;
 				cursor: pointer;
-				font-size: 16px;
-				margin-left: 10px;
-				vertical-align: middle;
+				transition: background-color 0.3s;
+				width: 100%;
+				font-weight: 600;
 			}
-			#generate:hover {
-				background-color: #2980b9;
+
+			button:hover {
+				background-color: var(--secondary);
 			}
-			#generate:disabled {
-				background-color: #95a5a6;
+
+			button:disabled {
+				background-color: #cccccc;
 				cursor: not-allowed;
 			}
-			#status {
-				margin: 10px 0;
-				font-weight: bold;
-				text-align: center;
-				min-height: 20px;
-			}
+
 			.loading {
-				color: #f39c12;
-			}
-			.success {
-				color: #27ae60;
-			}
-			.error {
-				color: #e74c3c;
-			}
-			#story-container {
-				margin-top: 20px;
-			}
-			#prompt-display {
+				display: none;
+				text-align: center;
 				margin: 20px 0;
-				padding: 10px;
-				border: 1px solid #ddd;
-				border-radius: 4px;
-				background-color: #fafafa;
 			}
-			#characters {
-				margin: 20px 0;
-				padding: 10px;
-				border: 1px solid #ddd;
-				border-radius: 4px;
+
+			.spinner {
+				border: 5px solid #f3f3f3;
+				border-top: 5px solid var(--primary);
+				border-radius: 50%;
+				width: 50px;
+				height: 50px;
+				animation: spin 1s linear infinite;
+				margin: 0 auto;
 			}
-			#characters ul {
-				list-style: none;
-				padding: 0;
+
+			@keyframes spin {
+				0% {
+					transform: rotate(0deg);
+				}
+				100% {
+					transform: rotate(360deg);
+				}
 			}
-			#characters li {
-				margin: 5px 0;
+
+			.story-container {
+				display: none;
+				background-color: white;
+				border-radius: 10px;
+				box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+				overflow: hidden;
 			}
-			.scene {
-				margin: 20px 0;
-				padding: 15px;
-				border: 1px solid #ddd;
-				border-radius: 4px;
-				background-color: #fff;
-			}
-			.scene img {
-				max-width: 100%;
-				max-height: 400px;
-				border-radius: 4px;
-				display: block;
-				margin: 10px auto;
-			}
-			.scene p {
-				margin: 10px 0;
-				font-style: italic;
-				line-height: 1.5;
-			}
-			#download {
-				display: block;
-				margin: 20px auto;
-				padding: 10px 20px;
-				background-color: #2ecc71;
+
+			.story-header {
+				background: linear-gradient(135deg, var(--primary), var(--secondary));
 				color: white;
-				text-decoration: none;
-				border-radius: 4px;
+				padding: 20px;
+				position: relative;
 			}
-			#download:hover {
-				background-color: #27ae60;
+
+			.story-title {
+				font-size: 2rem;
+				margin: 0 0 10px 0;
+			}
+
+			.story-theme {
+				font-style: italic;
+				font-size: 1.2rem;
+				opacity: 0.9;
+			}
+
+			.story-content {
+				padding: 30px;
+			}
+
+			.characters-section {
+				margin-bottom: 30px;
+			}
+
+			.character-card {
+				background-color: #f5f7fa;
+				border-left: 5px solid var(--primary);
+				padding: 15px;
+				margin-bottom: 15px;
+				border-radius: 5px;
+			}
+
+			.character-name {
+				font-weight: 700;
+				font-size: 1.2rem;
+				margin: 0 0 10px 0;
+			}
+
+			.character-desc {
+				margin: 0;
+			}
+
+			.scenes-section h2 {
+				margin-top: 30px;
+				border-bottom: 2px solid var(--primary);
+				padding-bottom: 10px;
+			}
+
+			.scene-card {
+				margin-bottom: 40px;
+				border: 1px solid #ddd;
+				border-radius: 8px;
+				overflow: hidden;
+			}
+
+			.scene-header {
+				background-color: #f5f7fa;
+				padding: 15px;
+				border-bottom: 1px solid #ddd;
+			}
+
+			.scene-title {
+				margin: 0;
+				font-size: 1.5rem;
+			}
+
+			.scene-content {
+				padding: 20px;
+			}
+
+			.scene-image {
+				width: 100%;
+				max-width: 500px;
+				height: auto;
+				display: block;
+				margin: 0 auto 20px auto;
+				border-radius: 5px;
+				box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+			}
+
+			.scene-description {
+				margin-bottom: 20px;
+			}
+
+			.scene-narration {
+				font-style: italic;
+				background-color: #f5f7fa;
+				padding: 15px;
+				border-radius: 5px;
+				border-left: 5px solid var(--success);
+			}
+
+			.btn-container {
+				margin-top: 30px;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				flex-wrap: wrap;
+				gap: 15px;
+			}
+
+			.download-buttons {
+				display: flex;
+				gap: 10px;
+			}
+
+			.btn-download {
+				background-color: var(--success);
+				padding: 10px 20px;
+				font-size: 16px;
+			}
+
+			.btn-download:hover {
+				background-color: #3aa7d9;
+			}
+
+			.scene-image {
+				width: 100%;
+				max-width: 500px;
+				height: auto;
+				display: block;
+				margin: 0 auto 20px auto;
+				border-radius: 5px;
+				box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+			}
+
+			.btn-download {
+				background-color: var(--success);
+				padding: 10px 20px;
+				font-size: 16px;
+			}
+
+			.btn-download:hover {
+				background-color: #3aa7d9;
+			}
+
+			.btn-back {
+				background-color: #6c757d;
+				padding: 10px 20px;
+			}
+
+			.error-message {
+				background-color: #ffebee;
+				color: var(--error);
+				padding: 15px;
+				border-radius: 5px;
+				margin-bottom: 20px;
+				display: none;
+			}
+
+			@media (max-width: 768px) {
+				.container {
+					padding: 15px;
+				}
+
+				header {
+					padding: 15px 0;
+				}
+
+				h1 {
+					font-size: 2rem;
+				}
+
+				.scene-image {
+					max-height: 300px;
+				}
 			}
 		</style>
 	</head>
 	<body>
 		<div class="container">
-			<h1>Story Maker</h1>
-			<div class="input-group">
-				<input id="prompt" type="text" placeholder="Enter your story description..." size="50" />
-				<input id="sceneCount" type="number" min="1" max="5" value="2" />
-				<button id="generate">Generate Story</button>
+			<header>
+				<h1>AI Story Generator</h1>
+				<p class="tagline">Transform your ideas into illustrated stories with AI</p>
+			</header>
+
+			<div class="generator-form" id="generatorForm">
+				<div class="error-message" id="errorMessage"></div>
+
+				<div class="form-group">
+					<label for="storyPrompt">Describe your story idea:</label>
+					<textarea id="storyPrompt" placeholder="Enter a detailed description of your story idea..."></textarea>
+				</div>
+
+				<div class="form-group">
+					<label for="sceneCount">Number of scenes (1-10):</label>
+					<input type="number" id="sceneCount" min="1" max="10" value="3" />
+				</div>
+
+				<button id="generateBtn">Generate Story</button>
 			</div>
-			<p id="status"></p>
-			<div id="story-container">
-				<div id="prompt-display"></div>
-				<div id="characters"></div>
-				<div id="scenes-container"></div>
-				<a id="download" href="#" style="display: none">Download JSON Output</a>
+
+			<div class="loading" id="loadingIndicator">
+				<div class="spinner"></div>
+				<p>Creating your story... This may take a minute.</p>
+			</div>
+
+			<div class="story-container" id="storyContainer">
+				<div class="story-header">
+					<h2 class="story-title" id="storyTitle">Your Story Title</h2>
+					<p class="story-theme" id="storyTheme">Theme: Adventure</p>
+				</div>
+
+				<div class="story-content">
+					<div class="characters-section">
+						<h2>Characters</h2>
+						<div id="charactersContainer"></div>
+					</div>
+
+					<div class="scenes-section">
+						<h2>Scenes</h2>
+						<div id="scenesContainer"></div>
+					</div>
+
+					<div class="btn-container">
+						<button class="btn-back" id="backBtn">Create Another Story</button>
+						<div class="download-buttons">
+							<button class="btn-download" id="downloadJsonBtn">Download Story JSON</button>
+							<button class="btn-download" id="downloadImagesBtn">Download Images</button>
+						</div>
+					</div>
+				</div>
 			</div>
 		</div>
 
 		<script>
-			document.getElementById('generate').addEventListener('click', generateStory);
-			document.getElementById('prompt').addEventListener('keypress', function (event) {
-				if (event.key === 'Enter') generateStory();
-			});
+			document.addEventListener('DOMContentLoaded', function () {
+				const generatorForm = document.getElementById('generatorForm');
+				const loadingIndicator = document.getElementById('loadingIndicator');
+				const storyContainer = document.getElementById('storyContainer');
+				const generateBtn = document.getElementById('generateBtn');
+				const backBtn = document.getElementById('backBtn');
+				const errorMessage = document.getElementById('errorMessage');
+				const downloadJsonBtn = document.getElementById('downloadJsonBtn');
+				const downloadImagesBtn = document.getElementById('downloadImagesBtn');
 
-			function generateStory() {
-				const promptInput = document.getElementById('prompt');
-				const sceneCountInput = document.getElementById('sceneCount');
-				const generateButton = document.getElementById('generate');
-				const status = document.getElementById('status');
-				const promptDisplay = document.getElementById('prompt-display');
-				const charactersDiv = document.getElementById('characters');
-				const scenesContainer = document.getElementById('scenes-container');
-				const downloadLink = document.getElementById('download');
+				// Story elements
+				const storyTitle = document.getElementById('storyTitle');
+				const storyTheme = document.getElementById('storyTheme');
+				const charactersContainer = document.getElementById('charactersContainer');
+				const scenesContainer = document.getElementById('scenesContainer');
 
-				const prompt = promptInput.value.trim();
-				const sceneCount = parseInt(sceneCountInput.value);
+				// Form elements
+				const storyPrompt = document.getElementById('storyPrompt');
+				const sceneCount = document.getElementById('sceneCount');
 
-				if (!prompt || isNaN(sceneCount) || sceneCount < 1) {
-					status.textContent = 'Please enter a story description and valid scene count!';
-					status.className = 'error';
-					return;
+				// Story data variables to store the response
+				let storyData = null;
+				let storyImages = null;
+
+				generateBtn.addEventListener('click', generateStory);
+				backBtn.addEventListener('click', resetForm);
+				downloadJsonBtn.addEventListener('click', downloadStoryJson);
+				downloadImagesBtn.addEventListener('click', downloadImages);
+
+				function generateStory() {
+					// Validate inputs
+					if (!storyPrompt.value.trim()) {
+						showError('Please enter a story idea.');
+						return;
+					}
+
+					const scenes = parseInt(sceneCount.value);
+					if (isNaN(scenes) || scenes < 1 || scenes > 10) {
+						showError('Please enter a valid number of scenes (1-10).');
+						return;
+					}
+
+					// Hide error if previously shown
+					errorMessage.style.display = 'none';
+
+					// Show loading indicator
+					generatorForm.style.display = 'none';
+					loadingIndicator.style.display = 'block';
+
+					// Prepare the request payload
+					const payload = {
+						prompt: storyPrompt.value.trim(),
+						sceneCount: scenes,
+					};
+
+					// Send the request to the backend
+					fetch('/api/generate-story', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify(payload),
+					})
+						.then((response) => {
+							if (!response.ok) {
+								throw new Error('Network response was not ok');
+							}
+							return response.json();
+						})
+						.then((data) => {
+							renderStory(data);
+						})
+						.catch((error) => {
+							console.error('Error:', error);
+							generatorForm.style.display = 'block';
+							loadingIndicator.style.display = 'none';
+							showError('An error occurred while generating your story. Please try again.');
+						});
 				}
 
-				generateButton.disabled = true;
-				promptInput.disabled = true;
-				sceneCountInput.disabled = true;
-				status.textContent = 'Generating story...';
-				status.className = 'loading';
-				promptDisplay.innerHTML = '';
-				charactersDiv.innerHTML = '';
-				scenesContainer.innerHTML = '';
-				downloadLink.style.display = 'none';
+				function renderStory(data) {
+					const { story, images } = data;
 
-				fetch('/generate-story', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ prompt, sceneCount }),
-				})
-					.then((response) => {
-						if (!response.ok) throw new Error(`Server error: ${response.status}`);
-						return response.json();
-					})
-					.then((data) => {
-						const { metadata, images } = data;
+					// Store data for download functionality
+					storyData = story;
+					storyImages = images;
 
-						// Display the original prompt
-						promptDisplay.innerHTML = `<h3>Story Description</h3><p>${metadata.prompt}</p>`;
+					// Set story title and theme
+					storyTitle.textContent = story.prompt.split('.')[0]; // Use first sentence as title
+					storyTheme.textContent = `Theme: ${story.theme}`;
 
-						// Display character descriptions
-						charactersDiv.innerHTML =
-							'<h3>Characters</h3><ul>' +
-							Object.entries(metadata.characterDescriptions)
-								.map(([name, desc]) => `<li><strong>${name}:</strong> ${desc}</li>`)
-								.join('') +
-							'</ul>';
-
-						// Display scenes
-						metadata.scenes.forEach((scene, index) => {
-							const sceneDiv = document.createElement('div');
-							sceneDiv.className = 'scene';
-							sceneDiv.innerHTML = `
-            <h3>Scene ${index + 1}</h3>
-            <img src="${images[index]}" alt="Scene ${index + 1}" />
-            <p>${scene.narration}</p>
-          `;
-							scenesContainer.appendChild(sceneDiv);
-						});
-
-						// Setup JSON download link
-						const jsonBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
-						const url = URL.createObjectURL(jsonBlob);
-						downloadLink.href = url;
-						downloadLink.download = 'story_output.json';
-						downloadLink.style.display = 'block';
-
-						status.textContent = 'Story generated successfully!';
-						status.className = 'success';
-					})
-					.catch((error) => {
-						status.textContent = 'Error: ' + error.message;
-						status.className = 'error';
-						console.error('Story generation failed:', error);
-					})
-					.finally(() => {
-						generateButton.disabled = false;
-						promptInput.disabled = false;
-						sceneCountInput.disabled = false;
+					// Render characters
+					charactersContainer.innerHTML = '';
+					story.characters.forEach((character) => {
+						const characterCard = document.createElement('div');
+						characterCard.className = 'character-card';
+						characterCard.innerHTML = `
+							<h3 class="character-name">${character.name}</h3>
+							<p class="character-desc">${character.description}</p>
+						`;
+						charactersContainer.appendChild(characterCard);
 					});
-			}
+
+					// Render scenes
+					scenesContainer.innerHTML = '';
+					story.scenes.forEach((scene, index) => {
+						const sceneCard = document.createElement('div');
+						sceneCard.className = 'scene-card';
+						sceneCard.innerHTML = `
+							<div class="scene-header">
+								<h3 class="scene-title">Scene ${scene.id}: ${scene.title}</h3>
+							</div>
+							<div class="scene-content">
+								<img src="${images[index]}" alt="Scene ${scene.id}" class="scene-image">
+								<div class="scene-description">
+									<p>${scene.description}</p>
+								</div>
+								<div class="scene-narration">
+									<p>${scene.narration}</p>
+								</div>
+							</div>
+						`;
+						scenesContainer.appendChild(sceneCard);
+					});
+
+					// Hide loading and show story
+					loadingIndicator.style.display = 'none';
+					storyContainer.style.display = 'block';
+				}
+
+				function resetForm() {
+					// Hide story and show form
+					storyContainer.style.display = 'none';
+					generatorForm.style.display = 'block';
+
+					// Clear form inputs
+					storyPrompt.value = '';
+					sceneCount.value = '3';
+				}
+
+				function showError(message) {
+					errorMessage.textContent = message;
+					errorMessage.style.display = 'block';
+				}
+
+				function downloadStoryJson() {
+					if (!storyData) return;
+
+					const dataStr = JSON.stringify(storyData, null, 2);
+					const dataBlob = new Blob([dataStr], { type: 'application/json' });
+					const url = URL.createObjectURL(dataBlob);
+
+					const link = document.createElement('a');
+					link.href = url;
+					link.download = 'ai-story.json';
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+					URL.revokeObjectURL(url);
+				}
+
+				function downloadImages() {
+					if (!storyImages || !storyImages.length) return;
+
+					storyImages.forEach((imageData, index) => {
+						// Create an anchor element for downloading
+						const link = document.createElement('a');
+
+						// Set the href attribute to the base64 image data
+						link.href = imageData;
+
+						// Set the download attribute to a filename
+						link.download = `scene-${index + 1}.png`;
+
+						// Append to the document, click, and remove
+						document.body.appendChild(link);
+						link.click();
+						document.body.removeChild(link);
+
+						// Add a slight delay between downloads to prevent browser issues
+						setTimeout(() => {}, 300);
+					});
+				}
+			});
 		</script>
 	</body>
 </html>
