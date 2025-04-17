@@ -63,7 +63,7 @@ interface Character{
 	name: string;
 	description: string;
 }
-async function generateImage(ai: Ai, prompt: string, characters:Character[]): Promise<string> {
+async function generateImage(ai: Ai, prompt: string, characters:Character[], imageType: string): Promise<string> {
 	`
     Generate an image based on the prompt using the Cloudflare AI Worker
 
@@ -77,9 +77,10 @@ async function generateImage(ai: Ai, prompt: string, characters:Character[]): Pr
 	console.log(`[PROCESS] Characters: ${JSON.stringify(characters)}`);
 
 	const outlinedPrompt = `
-        Generate an image with Pixar 3D animation style based on the following prompt: ${prompt}. Make sure to follow the characters' description in the scene.
-		The characters are: ${characters.map(character => `${character.name} (${character.description})`).join(', ')}.
-    `;
+        Generate an image with Pixar 3D animation style based on the following prompt: ${prompt}. 
+		Make sure to follow ${imageType} theme.
+		Make sure to follow the characters' description in the scene.
+		The characters are: ${characters.map(character => `${character.name} (${character.description})`).join(', ')}.`;
 
 	try {
 		const result = await ai.run('@cf/black-forest-labs/flux-1-schnell', {
@@ -208,6 +209,18 @@ export default {
 		const url = new URL(request.url);
 		const pathname = url.pathname;
 
+		// handle CORS preflight requests
+		if (request.method === 'OPTIONS') {
+			return new Response(null, {
+				status: 204,
+				headers: {
+					'Access-Control-Allow-Credentials': 'true',
+					'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+					'Access-Control-Allow-Origin': 'http://localhost:3000',
+					'Access-Control-Allow-Headers': 'Content-Type',
+				},
+			});
+		}
 		// === Endpoint 1: Generate content ===
 		if (request.method === 'POST' && pathname === '/api/generate/content') {
 			const { topic, type, sceneCount } = await request.json() as GenerateContentRequest;
@@ -236,36 +249,43 @@ export default {
 			const story = await generateStoryOutline(geminiModel, fullPrompt, sceneCount);
 
 			return new Response(JSON.stringify({ story }), {
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*', 
+				},
 			});
 		}
 
 		// === Endpoint 2: Generate images ===
 		else if (request.method === 'POST' && pathname === '/api/generate/images') {
-			const { scenes, characters } = await request.json() as { scenes: Scene[], characters: Character[] };
+			const { scenes, characters, imageType } = await request.json() as { scenes: Scene[], characters: Character[], imageType: string };
 
 			const images: string[] = [];
 			for (const scene of scenes) {
-				const img = await generateImage(env.AI, scene.image, characters);
+				const img = await generateImage(env.AI, scene.image, characters, imageType);
 				images.push(img);
 			}
 
 			return new Response(JSON.stringify({ images }), {
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+
+				 },
 			});
 		}
 
 			// === Endpoint 3: Generate image ===
 		else if (request.method === 'POST' && pathname === '/api/generate/image') {
-				const { prompt, characters } = (await request.json()) as { prompt: string, characters: Character[]  };
+				const { prompt, characters, imageType } = (await request.json()) as { prompt: string, characters: Character[], imageType: string };
 	
-				const image = await generateImage(env.AI, prompt, characters);
+				const image = await generateImage(env.AI, prompt, characters, imageType);
 	
 				return new Response(JSON.stringify({ image }), {
 					headers: { 
 						'Content-Type': 'application/json', 
 						'Access-Control-Allow-Origin': '*',
 						'Content-Disposition': 'attachment; filename="image-output.json"',
+						
 					},
 				});
 		}

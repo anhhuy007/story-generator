@@ -336,6 +336,15 @@
 						<option value="Poetry Illustration - Artistic interpretation">Poetry Illustration - Artistic interpretation</option>
 					</select>
 				</div>
+
+				<div class="form-group">
+					<label for="imageType">Select story type:</label>
+					<select id="imageType">
+						<option value="Science">Science</option>
+						<option value="Romantic">Romantic</option>
+						<option value="Sad">Sad</option>
+					</select>
+				</div>
 				
 
 				<button id="generateBtn">Generate Story</button>
@@ -414,6 +423,7 @@
 					const topic = document.getElementById('storyPrompt').value.trim();
 					const sceneCount = parseInt(document.getElementById('sceneCount').value);
 					const type=document.getElementById('storyType').value;	
+					const imageType=document.getElementById('imageType').value;
 
 					if (!topic || isNaN(sceneCount) || sceneCount < 1 || sceneCount > 10) {
 						errorMessage.textContent = 'Please provide a valid story topic and scene count (1-10).';
@@ -442,7 +452,7 @@
 						const imageRes = await fetch('/api/generate/images', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ scenes: story.scenes, characters:story.characters })
+							body: JSON.stringify({ scenes: story.scenes, characters:story.characters, imageType})
 						});
 			
 						if (!imageRes.ok) {
