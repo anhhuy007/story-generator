@@ -442,7 +442,7 @@
 						const imageRes = await fetch('/api/generate/images', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ scenes: story.scenes })
+							body: JSON.stringify({ scenes: story.scenes, characters:story.characters })
 						});
 			
 						if (!imageRes.ok) {

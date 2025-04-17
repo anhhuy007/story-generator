@@ -58,19 +58,27 @@ interface GenerateContentRequest {
 	type:string;
     sceneCount: number;
 }
-async function generateImage(ai: Ai, prompt: string): Promise<string> {
+interface Character{
+	id: number;
+	name: string;
+	description: string;
+}
+async function generateImage(ai: Ai, prompt: string, characters:Character[]): Promise<string> {
 	`
     Generate an image based on the prompt using the Cloudflare AI Worker
 
     Input: prompt (string): The prompt to generate the image from
+			characters (Character[]): The characters in the scene
     Output: image (string): The generated image in base64 format
     `;
 
 	// Logging
 	console.log(`[PROCESS] Generating image for prompt: ${prompt}`);
+	console.log(`[PROCESS] Characters: ${JSON.stringify(characters)}`);
 
 	const outlinedPrompt = `
-        Generate an image with Pixar 3D animation style based on the following prompt: ${prompt}
+        Generate an image with Pixar 3D animation style based on the following prompt: ${prompt}. Make sure to follow the characters' description in the scene.
+		The characters are: ${characters.map(character => `${character.name} (${character.description})`).join(', ')}.
     `;
 
 	try {
@@ -234,11 +242,11 @@ export default {
 
 		// === Endpoint 2: Generate images ===
 		else if (request.method === 'POST' && pathname === '/api/generate/images') {
-			const { scenes } = await request.json() as { scenes: Scene[] };
+			const { scenes, characters } = await request.json() as { scenes: Scene[], characters: Character[] };
 
 			const images: string[] = [];
 			for (const scene of scenes) {
-				const img = await generateImage(env.AI, scene.image);
+				const img = await generateImage(env.AI, scene.image, characters);
 				images.push(img);
 			}
 
@@ -247,6 +255,21 @@ export default {
 			});
 		}
 
+			// === Endpoint 3: Generate image ===
+		else if (request.method === 'POST' && pathname === '/api/generate/image') {
+				const { prompt, characters } = (await request.json()) as { prompt: string, characters: Character[]  };
+	
+				const image = await generateImage(env.AI, prompt, characters);
+	
+				return new Response(JSON.stringify({ image }), {
+					headers: { 
+						'Content-Type': 'application/json', 
+						'Access-Control-Allow-Origin': '*',
+						'Content-Disposition': 'attachment; filename="image-output.json"',
+					},
+				});
+		}
+		
 		// === Existing endpoint fallback ===
 		return new Response('OK', {
 			status: 200,
