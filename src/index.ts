@@ -52,25 +52,35 @@ interface LLMResponse {
 	}[];
 }
 
-interface GenerateContentRequest {
-	topic: string;
-	sceneCount: number;
-}
 
-async function generateImage(ai: Ai, prompt: string): Promise<string> {
+interface GenerateContentRequest {
+    topic: string;
+	type:string;
+    sceneCount: number;
+}
+interface Character{
+	id: number;
+	name: string;
+	description: string;
+}
+async function generateImage(ai: Ai, prompt: string, characters:Character[], imageType: string): Promise<string> {
 	`
     Generate an image based on the prompt using the Cloudflare AI Worker
 
     Input: prompt (string): The prompt to generate the image from
+			characters (Character[]): The characters in the scene
     Output: image (string): The generated image in base64 format
     `;
 
 	// Logging
 	console.log(`[PROCESS] Generating image for prompt: ${prompt}`);
+	console.log(`[PROCESS] Characters: ${JSON.stringify(characters)}`);
 
 	const outlinedPrompt = `
-        Generate an image with Pixar 3D animation style based on the following prompt: ${prompt}
-    `;
+        Generate an image with Pixar 3D animation style based on the following prompt: ${prompt}. 
+		Make sure to follow ${imageType} theme.
+		Make sure to follow the characters' description in the scene.
+		The characters are: ${characters.map(character => `${character.name} (${character.description})`).join(', ')}.`;
 
 	try {
 		const result = await ai.run('@cf/black-forest-labs/flux-1-schnell', {
@@ -91,24 +101,24 @@ async function generateLLMResponse(model: AIModel, prompt: string): Promise<stri
 
 	const requestBody = JSON.stringify({
 		contents: [
-			{
-				parts: [
-					{
-						text: prompt, // đúng format như API yêu cầu
-					},
-				],
-			},
+		  {
+			parts: [
+			  {
+				text: prompt, // đúng format như API yêu cầu
+			  },
+			],
+		  },
 		],
-	});
-
-	const response = await fetch(model.URL.replace('${apiKey}', model.API_KEY), {
+	  });
+	  
+	  const response = await fetch(model.URL.replace('${apiKey}', model.API_KEY), {
 		method: 'POST',
 		headers: {
-			'Content-Type': 'application/json',
+		  'Content-Type': 'application/json',
 		},
 		body: requestBody,
-	});
-
+	  });
+	  
 	if (!response.ok) {
 		throw new Error(`Failed to generate LLM response: ${response.statusText}`);
 	}
@@ -211,15 +221,16 @@ export default {
 				},
 			});
 		}
-
 		// === Endpoint 1: Generate content ===
 		if (request.method === 'POST' && pathname === '/api/generate/content') {
-			const { topic, sceneCount } = (await request.json()) as GenerateContentRequest;
+			const { topic, type, sceneCount } = await request.json() as GenerateContentRequest;
 
+			console.log(`[CHECK] Request body: ${JSON.stringify({ topic, type, sceneCount })}`);
 			const fullPrompt = `
 				Topic: ${topic}
+				
 
-				Generate a story outline with ${sceneCount} scenes.
+				Generate a story outline with ${sceneCount} with ${type} mode.
 				The story should be consistent and coherent, with a clear beginning, middle, and end.
 
 				Response format:
@@ -247,42 +258,42 @@ export default {
 
 		// === Endpoint 2: Generate images ===
 		else if (request.method === 'POST' && pathname === '/api/generate/images') {
-			const { scenes } = (await request.json()) as { scenes: Scene[] };
+			const { scenes, characters, imageType } = await request.json() as { scenes: Scene[], characters: Character[], imageType: string };
 
 			const images: string[] = [];
 			for (const scene of scenes) {
-				// Generate image for each scene
-				const img = await generateImage(env.AI, scene.image);
+				const img = await generateImage(env.AI, scene.image, characters, imageType);
 				images.push(img);
 			}
 
 			return new Response(JSON.stringify({ images }), {
-				headers: { 
-					'Content-Type': 'application/json', 
+				headers: { 'Content-Type': 'application/json',
 					'Access-Control-Allow-Origin': '*',
-				},
+
+				 },
 			});
 		}
 
-		// === Endpoint 3: Generate image ===
+			// === Endpoint 3: Generate image ===
 		else if (request.method === 'POST' && pathname === '/api/generate/image') {
-			const { prompt } = (await request.json()) as { prompt: string };
-
-			const image = await generateImage(env.AI, prompt);
-
-			return new Response(JSON.stringify({ image }), {
-				headers: { 
-					'Content-Type': 'application/json', 
-					'Access-Control-Allow-Origin': '*',
-					'Content-Disposition': 'attachment; filename="image-output.json"',
-				},
-			});
+				const { prompt, characters, imageType } = (await request.json()) as { prompt: string, characters: Character[], imageType: string };
+	
+				const image = await generateImage(env.AI, prompt, characters, imageType);
+	
+				return new Response(JSON.stringify({ image }), {
+					headers: { 
+						'Content-Type': 'application/json', 
+						'Access-Control-Allow-Origin': '*',
+						'Content-Disposition': 'attachment; filename="image-output.json"',
+						
+					},
+				});
 		}
-
+		
 		// === Existing endpoint fallback ===
 		return new Response('OK', {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' },
 		});
-	},
+	}
 };
