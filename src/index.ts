@@ -63,6 +63,39 @@ interface Character{
 	name: string;
 	description: string;
 }
+
+async function fetchCharacterInfo(characterName: string): Promise<Character> {
+	const apiUrl = `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&titles=${encodeURIComponent(characterName)}&prop=extracts&exintro&explaintext&redirects=1`;
+
+	const response = await fetch(apiUrl);
+	if (!response.ok) {
+		throw new Error(`Failed to fetch character info: ${response.statusText}`);
+	}
+
+	const data = await response.json();
+
+	// Get the actual page data
+	const pages = (data as { query: { pages: Record<string, any> } }).query.pages;
+	const page = Object.values(pages)[0];
+
+	if (!page || !page.extract) {
+		throw new Error(`Character info not found for ${characterName}`);
+	}
+
+	// Use resolved title from API response
+	const resolvedTitle: string = page.title;
+	const characterDescription: string = page.extract;
+
+	const character: Character = {
+		id: Math.floor(Math.random() * 1000), // Replace with real ID logic if needed
+		name: resolvedTitle,
+		description: characterDescription
+	};
+
+	return character;
+}
+
+
 async function generateImage(ai: Ai, prompt: string, characters:Character[], imageType: string): Promise<string> {
 	`
     Generate an image based on the prompt using the Cloudflare AI Worker
