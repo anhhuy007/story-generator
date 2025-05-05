@@ -195,6 +195,53 @@ async function generateStoryOutline(model: AIModel, prompt: string, scenesCount:
 
 	return JSON.parse(storyOutline) as Story;
 }
+export interface ModerationResult {
+	isSafe: boolean;
+	reason?: string;
+}
+
+export async function checkToxicityWithGemini(
+	model: AIModel,
+	topic: string
+): Promise<ModerationResult> {
+	const prompt = `
+		Đánh giá nội dung sau đây có chứa yếu tố độc hại, thù ghét, khiêu dâm, bạo lực hoặc vi phạm chính sách không?
+		Chỉ trả về kết quả dưới dạng JSON: { "isSafe": true/false, "reason": "..." }
+
+		Nội dung: "${topic}"
+	`;
+
+	const modelResponse = await generateLLMResponse(model, prompt);
+
+	// Parse response như cách bạn làm trong generateStoryOutline
+	let outputText = '';
+	try {
+		const parsedResponse = JSON.parse(modelResponse) as LLMResponse;
+		outputText = parsedResponse.candidates[0].content.parts[0].text.trim();
+
+		if (outputText.startsWith('```json')) {
+			outputText = outputText
+				.replace(/^```json/, '')
+				.replace(/```$/, '')
+				.trim();
+		}
+
+		const result = JSON.parse(outputText) as ModerationResult;
+
+		if (typeof result.isSafe !== 'boolean') {
+			throw new Error('Kết quả không hợp lệ: thiếu isSafe');
+		}
+
+		return result;
+	} catch (err) {
+		console.warn('[Gemini] Lỗi phân tích JSON kiểm duyệt:', outputText);
+		return {
+			isSafe: false,
+			reason: 'Không thể xác định độ an toàn nội dung.'
+		};
+	}
+}
+
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
@@ -224,15 +271,33 @@ export default {
 		// === Endpoint 1: Generate content ===
 		if (request.method === 'POST' && pathname === '/api/generate/content') {
 			const { topic, type, sceneCount } = await request.json() as GenerateContentRequest;
-
+		
 			console.log(`[CHECK] Request body: ${JSON.stringify({ topic, type, sceneCount })}`);
+		
+			// Kiểm tra nội dung
+			const moderation = await checkToxicityWithGemini(geminiModel, topic);
+		
+			if (!moderation.isSafe) {
+				console.warn(`[CHECK] Nội dung không an toàn: ${topic}`);
+				return new Response(JSON.stringify({
+					error: 'Nội dung không được chấp nhận.',
+					reason: moderation.reason || 'Không rõ lý do.'
+				}), {
+					status: 400,
+					headers: {
+						'Content-Type': 'application/json',
+						'Access-Control-Allow-Origin': '*',
+					}
+				});
+			}
+		
+			// Nếu nội dung an toàn, tạo prompt và sinh nội dung
 			const fullPrompt = `
 				Topic: ${topic}
-				
-
-				Generate a story outline with ${sceneCount} with ${type} mode.
+		
+				Generate a story outline with ${sceneCount} scenes using ${type} mode.
 				The story should be consistent and coherent, with a clear beginning, middle, and end.
-
+		
 				Response format:
 				{
 					"prompt": "...",
@@ -241,21 +306,22 @@ export default {
 					"characters": [...],
 					"theme": "..."
 				}
-
-				Scene image description: < 200 words.
-				Narration (in Vietnamese): ~80 words, emotional, story-like.
+		
+				Each scene should include:
+				- Image description: < 200 words.
+				- Narration (in Vietnamese): ~80 words, emotional and story-like.
 			`;
-
+		
 			const story = await generateStoryOutline(geminiModel, fullPrompt, sceneCount);
-
+		
 			return new Response(JSON.stringify({ story }), {
-				headers: { 
+				headers: {
 					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*', 
+					'Access-Control-Allow-Origin': '*',
 				},
 			});
 		}
-
+		
 		// === Endpoint 2: Generate images ===
 		else if (request.method === 'POST' && pathname === '/api/generate/images') {
 			const { scenes, characters, imageType } = await request.json() as { scenes: Scene[], characters: Character[], imageType: string };
