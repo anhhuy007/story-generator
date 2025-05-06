@@ -56,7 +56,9 @@ interface LLMResponse {
 interface GenerateContentRequest {
     topic: string;
 	type:string;
+	personalStyle:string;
     sceneCount: number;
+	AI_type:string;
 }
 interface Character{
 	id: number;
@@ -94,7 +96,7 @@ async function generateImage(ai: Ai, prompt: string, characters:Character[], ima
 	}
 }
 
-async function generateLLMResponse(model: AIModel, prompt: string): Promise<string> {
+async function generateGeminiLLMResponse(model: AIModel, prompt: string): Promise<string> {
 	if (!model.API_KEY || !model.URL) {
 		throw new Error('API_KEY or URL is not defined');
 	}
@@ -126,21 +128,54 @@ async function generateLLMResponse(model: AIModel, prompt: string): Promise<stri
 	return response.text();
 }
 
-async function generateStoryOutline(model: AIModel, prompt: string, scenesCount: number): Promise<Story> {
-	`
-        Generate a story outline based on the prompt using the LLM.
-        
-        Input: 
-            API_KEY (string): The API key for the LLM
-            URL (string): The URL for the LLM endpoint
-            body (string): The body of the request to the LLM
-            prompt (string): The prompt to generate the response from
-        
-        Output: 
-            response (string): The generated response from the LLM
-        `;
+async function generateMetaResponse(model: AIModel, prompt: string): Promise<string> {
+    if (!model.API_KEY || !model.URL) {
+        throw new Error('API_KEY or URL is not defined');
+    }
 
-	const outlinedPrompt = `
+    const requestBody = JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+            {
+                role: "user",
+                content: prompt,
+            },
+        ],
+    });
+
+    try {
+        const response = await fetch(model.URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${model.API_KEY}`,
+            },
+            body: requestBody,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to generate LLM response: ${response.statusText}`);
+        }
+
+        const data = await response.text();
+
+        // Làm sạch phản hồi nếu cần
+        let cleanedResponse = data.trim();
+        if (cleanedResponse.startsWith('```json')) {
+            cleanedResponse = cleanedResponse
+                .replace(/^```json/, '') // Loại bỏ mở đầu ```json
+                .replace(/```$/, '') // Loại bỏ kết thúc ```
+                .trim();
+        }
+
+        return cleanedResponse;
+    } catch (error) {
+        console.error("Error in generateMetaResponse:", error);
+        throw new Error("Failed to get LLM response.");
+    }
+}
+async function generateStoryOutline(model: AIModel, prompt: string, scenesCount: number, AI_type: string): Promise<Story> {
+    const outlinedPrompt = `
         Generate a story outline with ${scenesCount} scenes based on the following prompt: ${prompt}.
         The story should be consistent and coherent, with a clear beginning, middle, and end.
 
@@ -168,32 +203,69 @@ async function generateStoryOutline(model: AIModel, prompt: string, scenesCount:
         }
 
         The scene's image should be less than 200 words, containing a description of the scene and the characters in it.
-		The narration for each scene should be in Vietnamese, with a natural and emotionally resonant flow. It should be around 80 words, vividly describing the scene. Use a reverent tone appropriate for storytelling.
+        The narration for each scene should be in Vietnamese, with a natural and emotionally resonant flow. It should be around 80 words, vividly describing the scene. Use a reverent tone appropriate for storytelling.
         The characters should be described clearly, with their gender and appearance (e.g., hair color, eye color, clothing). 
     `;
-	const modelResponse = await generateLLMResponse(model, outlinedPrompt);
 
-	// Parse the response to JSON
-	let parsedResponse: LLMResponse;
-	try {
-		parsedResponse = JSON.parse(modelResponse) as LLMResponse;
-	} catch (error) {
-		console.error(`[ERROR] Failed to parse LLM response: ${error}`);
-		throw new Error(`Failed to parse LLM response: ${error}`);
+    let modelResponse;
+    if (AI_type === 'GEMINI') {
+        modelResponse = await generateGeminiLLMResponse(model, outlinedPrompt);
+    } else {
+        modelResponse = await generateMetaResponse(model, outlinedPrompt);
+    }
+
+    console.log("Model response: ", modelResponse);
+
+    if (AI_type === 'GEMINI') {
+        let parsedResponse: LLMResponse;
+        try {
+            parsedResponse = JSON.parse(modelResponse) as LLMResponse;
+        } catch (error) {
+            console.error(`[ERROR] Failed to parse GEMINI response: ${error}`);
+            throw new Error(`Failed to parse GEMINI response: ${error}`);
+        }
+
+        const responseContent = parsedResponse.candidates[0]?.content?.parts?.[0]?.text;
+        if (!responseContent) throw new Error("No message content found in GEMINI response.");
+
+        let storyOutline = responseContent.trim();
+        if (storyOutline.startsWith('```json')) {
+            storyOutline = storyOutline.replace(/^```json/, '').replace(/```$/, '').trim();
+        }
+
+        return JSON.parse(storyOutline) as Story;
+
+	} else {
+		// Handle META response
+		let storyOutlineRaw = modelResponse;
+	
+		// Nếu response là object stringified, parse rồi lấy content
+		if (typeof storyOutlineRaw === "string" && storyOutlineRaw.trim().startsWith('{')) {
+			try {
+				const parsed = JSON.parse(storyOutlineRaw);
+				storyOutlineRaw = parsed.choices?.[0]?.message?.content ?? '';
+			} catch (error) {
+				console.warn("[WARN] Failed to parse META wrapper JSON, treating response as raw text.");
+				// Nếu không parse được thì cứ xử lý luôn response như text
+			}
+		}
+	
+		// Clean markdown-like wrappers ```json ... ```
+		let cleanJSON = storyOutlineRaw.trim();
+		if (cleanJSON.startsWith('```json')) {
+			cleanJSON = cleanJSON.replace(/^```json/, '').replace(/```$/, '').trim();
+		} else if (cleanJSON.startsWith('```')) {
+			cleanJSON = cleanJSON.replace(/^```/, '').replace(/```$/, '').trim();
+		}
+	
+		try {
+			return JSON.parse(cleanJSON) as Story;
+		} catch (error) {
+			console.error("[ERROR] Failed to parse story outline JSON (Meta):", error);
+			console.error("Raw response was:\n", cleanJSON);
+			throw new Error("Failed to parse story outline JSON (Meta).");
+		}
 	}
-
-	// Clean up the Markdown code block wrapper
-	let storyOutline = parsedResponse.candidates[0].content.parts[0].text.trim();
-	if (storyOutline.startsWith('```json')) {
-		storyOutline = storyOutline
-			.replace(/^```json/, '')
-			.replace(/```$/, '')
-			.trim();
-	}
-
-	console.log(`[CHECK] Cleaned Story outline: ${storyOutline}`);
-
-	return JSON.parse(storyOutline) as Story;
 }
 export interface ModerationResult {
 	isSafe: boolean;
@@ -211,7 +283,7 @@ export async function checkToxicityWithGemini(
 		Nội dung: "${topic}"
 	`;
 
-	const modelResponse = await generateLLMResponse(model, prompt);
+	const modelResponse = await generateGeminiLLMResponse(model, prompt);
 
 	// Parse response như cách bạn làm trong generateStoryOutline
 	let outputText = '';
@@ -246,13 +318,21 @@ export async function checkToxicityWithGemini(
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const GEMINI_API_KEY = 'AIzaSyDFTpaQcUUsw_0Tv-IzZWTD-5UVT5bxV0A';
+		const GROQ_API_KEY='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';
 
+		// Gemini
 		const geminiModel: AIModel = {
 			API_KEY: GEMINI_API_KEY,
 			URL: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}',
 			requestBody: '', // Không dùng field này nữa
 		};
 
+		// Grok
+		const grokModel: AIModel = {
+			API_KEY: GROQ_API_KEY, // Định nghĩa API Key
+			URL: 'https://api.groq.com/openai/v1/chat/completions', // URL của API Groq
+			requestBody: '', // Không sử dụng trường này
+		};		
 		const url = new URL(request.url);
 		const pathname = url.pathname;
 
@@ -270,7 +350,7 @@ export default {
 		}
 		// === Endpoint 1: Generate content ===
 		if (request.method === 'POST' && pathname === '/api/generate/content') {
-			const { topic, type, sceneCount } = await request.json() as GenerateContentRequest;
+			const { topic, type, personalStyle, sceneCount, AI_type } = await request.json() as GenerateContentRequest; // add AI type
 		
 			console.log(`[CHECK] Request body: ${JSON.stringify({ topic, type, sceneCount })}`);
 		
@@ -296,6 +376,7 @@ export default {
 				Topic: ${topic}
 		
 				Generate a story outline with ${sceneCount} scenes using ${type} mode.
+				Make sure to follow the personal style: ${personalStyle}.
 				The story should be consistent and coherent, with a clear beginning, middle, and end.
 		
 				Response format:
@@ -312,7 +393,14 @@ export default {
 				- Narration (in Vietnamese): ~80 words, emotional and story-like.
 			`;
 		
-			const story = await generateStoryOutline(geminiModel, fullPrompt, sceneCount);
+			let story;
+			if (AI_type === 'GEMINI') {
+				story = await generateStoryOutline(geminiModel, fullPrompt, sceneCount, AI_type);
+			} else{
+				story = await generateStoryOutline(grokModel, fullPrompt, sceneCount, AI_type);
+
+			}
+
 		
 			return new Response(JSON.stringify({ story }), {
 				headers: {
